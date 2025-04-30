@@ -1,0 +1,12 @@
+openai==1.13.3
+google-cloud-translate==3.11.1
+pydub==0.25.1
+sounddevice==0.4.6
+numpy==1.24.3
+ffmpeg-python==0.2.0
+python-dotenv==1.0.1
+yt-dlp==2024.3.10
+langdetect==1.0.9
+requests==2.31.0
+google-api-python-client==2.121.0
+flask==2.3.3 

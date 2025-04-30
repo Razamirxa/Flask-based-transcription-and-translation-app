@@ -1,0 +1,3 @@
+# Cookies for YouTube download
+# This file helps yt-dlp bypass YouTube restrictions
+# Format: domain_name TRUE path TRUE expiry_time name value 

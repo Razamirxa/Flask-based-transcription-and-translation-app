@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+
+{% block title %}Audio/Video Transcription - Home{% endblock %}
+
+{% block content %}
+<div class="hero">
+    <h1>Audio & Video Transcription</h1>
+    <p>Convert your audio and video files to text with our powerful transcription service</p>
+</div>
+
+{% if demo_mode %}
+<div class="demo-notice">
+    <i class="fas fa-info-circle"></i>
+    <p>Running in <strong>DEMO MODE</strong>. Google Cloud credentials not found. Transcription functionality is simulated.</p>
+</div>
+{% endif %}
+
+<div class="features">
+    <div class="feature-card">
+        <div class="feature-icon">
+            <i class="fas fa-file-upload"></i>
+        </div>
+        <h2>Upload File</h2>
+        <p>Upload audio or video files for transcription</p>
+        <form action="{{ url_for('upload_file') }}" method="post" enctype="multipart/form-data" class="upload-form">
+            <div class="file-input-container">
+                <input type="file" name="file" id="file" accept=".mp3,.wav,.ogg,.flac,.mp4,.avi,.mov,.mkv,.aac,.m4a">
+                <label for="file">
+                    <i class="fas fa-cloud-upload-alt"></i>
+                    <span>Choose a file</span>
+                </label>
+                <span class="file-name">No file chosen</span>
+            </div>
+            <button type="submit" class="btn primary-btn">Upload & Transcribe</button>
+        </form>
+    </div>
+
+    <div class="feature-card">
+        <div class="feature-icon">
+            <i class="fas fa-microphone"></i>
+        </div>
+        <h2>Record Audio</h2>
+        <p>Record audio directly from your microphone</p>
+        <div class="record-controls">
+            <button id="startRecording" class="btn primary-btn">
+                <i class="fas fa-microphone"></i> Start Recording
+            </button>
+            <button id="stopRecording" class="btn secondary-btn" disabled>
+                <i class="fas fa-stop"></i> Stop Recording
+            </button>
+            <div id="recordingStatus" class="recording-status"></div>
+            <div id="recordingTime" class="recording-time">00:00</div>
+        </div>
+    </div>
+
+    <div class="feature-card">
+        <div class="feature-icon">
+            <i class="fab fa-youtube"></i>
+        </div>
+        <h2>YouTube URL</h2>
+        <p>Extract audio from a YouTube video for transcription</p>
+        <form action="{{ url_for('process_youtube') }}" method="post" class="youtube-form">
+            <div class="input-group">
+                <input type="url" 
+                       name="youtube_url" 
+                       placeholder="https://www.youtube.com/watch?v=..." 
+                       pattern="^https?://(?:www\.|m\.)?(?:youtube\.com/watch\?v=|youtu\.be/|youtube\.com/v/|youtube\.com/embed/|youtube\.com/shorts/)[\w-]+"
+                       title="Please enter a valid YouTube URL (e.g., https://www.youtube.com/watch?v=..., https://youtu.be/..., or YouTube Shorts URL)"
+                       required>
+                <button type="submit" class="btn primary-btn">Extract & Transcribe</button>
+            </div>
+            <small class="form-help">
+                Supported formats:
+                <ul>
+                    <li>www.youtube.com/watch?v=...</li>
+                    <li>youtu.be/...</li>
+                    <li>youtube.com/shorts/...</li>
+                </ul>
+            </small>
+        </form>
+    </div>
+</div>
+
+<div class="language-section">
+    <h2>Supported Languages</h2>
+    <p>Our transcription service supports over 50 languages</p>
+    
+    <div class="language-grid">
+        {% for code, name in languages.items() %}
+        <div class="language-item">
+            <span class="language-code">{{ code }}</span>
+            <span class="language-name">{{ name }}</span>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // File upload handling
+        const fileInput = document.getElementById('file');
+        const fileName = document.querySelector('.file-name');
+        
+        fileInput.addEventListener('change', function() {
+            if (fileInput.files.length > 0) {
+                fileName.textContent = fileInput.files[0].name;
+            } else {
+                fileName.textContent = 'No file chosen';
+            }
+        });
+        
+        // Recording functionality with Web Audio API
+        const startButton = document.getElementById('startRecording');
+        const stopButton = document.getElementById('stopRecording');
+        const recordingStatus = document.getElementById('recordingStatus');
+        const recordingTime = document.getElementById('recordingTime');
+        
+        let mediaRecorder;
+        let audioChunks = [];
+        let startTime;
+        let timerInterval;
+        
+        // Function to update the timer display
+        function updateTimer() {
+            const now = new Date();
+            const elapsedSeconds = Math.floor((now - startTime) / 1000);
+            const minutes = Math.floor(elapsedSeconds / 60);
+            const seconds = elapsedSeconds % 60;
+            recordingTime.textContent = 
+                (minutes < 10 ? '0' : '') + minutes + ':' + 
+                (seconds < 10 ? '0' : '') + seconds;
+        }
+        
+        startButton.addEventListener('click', async function() {
+            try {
+                // First notify the server that we're starting recording
+                const response = await fetch('{{ url_for("record_audio") }}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: 'action=start'
+                });
+                
+                const data = await response.json();
+                
+                if (data.status === 'recording') {
+                    // Now start capturing audio from the browser
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    
+                    // Create a new MediaRecorder instance
+                    mediaRecorder = new MediaRecorder(stream, {
+                        mimeType: 'audio/webm'
+                    });
+                    audioChunks = [];
+                    
+                    // Handle data available event
+                    mediaRecorder.addEventListener('dataavailable', event => {
+                        audioChunks.push(event.data);
+                    });
+                    
+                    // Start recording with more frequent data chunks
+                    mediaRecorder.start(1000); // Request data every second
+                    
+                    // Update UI
+                    startButton.disabled = true;
+                    stopButton.disabled = false;
+                    recordingStatus.innerHTML = '<i class="fas fa-circle recording-icon"></i> Recording...';
+                    
+                    // Start timer
+                    startTime = new Date();
+                    timerInterval = setInterval(updateTimer, 1000);
+                    recordingTime.textContent = '00:00';
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                recordingStatus.textContent = 'Error starting recording: ' + error.message;
+            }
+        });
+        
+        stopButton.addEventListener('click', async function() {
+            if (!mediaRecorder) {
+                recordingStatus.textContent = 'No recording in progress';
+                return;
+            }
+            
+            // Stop the MediaRecorder
+            mediaRecorder.stop();
+            
+            // Clear the timer
+            clearInterval(timerInterval);
+            
+            // Update UI
+            startButton.disabled = false;
+            stopButton.disabled = true;
+            recordingStatus.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing...';
+            
+            // When the recording is stopped, handle the audio data
+            mediaRecorder.addEventListener('stop', async () => {
+                try {
+                    // Create a blob from the audio chunks
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                    
+                    // Send the audio data to the server
+                    const formData = new FormData();
+                    formData.append('audio', audioBlob, 'recording.webm');
+                    formData.append('action', 'stop');
+                    
+                    const response = await fetch('{{ url_for("record_audio") }}', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.status === 'success') {
+                        recordingStatus.innerHTML = '<i class="fas fa-check"></i> Recording saved';
+                        window.location.href = data.redirect;
+                    } else {
+                        recordingStatus.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Error: ' + data.message;
+                        console.error('Server returned error:', data.message);
+                        startButton.disabled = false; // Re-enable start button to try again
+                    }
+                } catch (error) {
+                    console.error('Error:', error);
+                    recordingStatus.textContent = 'Error saving recording: ' + error.message;
+                }
+            });
+        });
+    });
+</script>
+{% endblock %} 

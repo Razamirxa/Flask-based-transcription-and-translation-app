@@ -1,0 +1,365 @@
+{% extends "base.html" %}
+
+{% block title %}Audio/Video Transcription - Transcribe{% endblock %}
+
+{% block content %}
+<div class="transcription-container">
+    <h1>Transcribe Audio</h1>
+    
+    <div class="transcription-options">
+        <form id="transcriptionForm" class="transcription-form">
+            <div class="form-group">
+                <label for="language">Select Language:</label>
+                <select id="language" name="language" class="language-select">
+                    {% for code, name in languages.items() %}
+                        <option value="{{ code }}" {% if code == 'ur' %}selected{% endif %}>
+                            {{ name }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label class="checkbox-container">
+                    <input type="checkbox" id="translate" name="translate" value="true">
+                    <span class="checkmark"></span>
+                    Translate to another language
+                </label>
+            </div>
+            
+            <div class="form-group" id="targetLanguageGroup" style="display: none;">
+                <label for="targetLanguage">Target Language:</label>
+                <select id="targetLanguage" name="targetLanguage" class="language-select">
+                    <option value="en">English</option>
+                    <option value="ur">Urdu</option>
+                    <!-- Add more languages as needed -->
+                </select>
+            </div>
+            
+            <button type="submit" id="startTranscription" class="btn primary-btn">
+                <i class="fas fa-play"></i> Start Transcription
+            </button>
+        </form>
+    </div>
+    
+    <div class="progress-container" style="display: none;">
+        <div class="progress-bar">
+            <div class="progress-fill"></div>
+        </div>
+        <div class="progress-percentage">0%</div>
+        <div class="progress-text">Processing...</div>
+    </div>
+    
+    <div class="results-container" style="display: none;">
+        <div class="result-tabs">
+            <button class="tab-btn active" data-tab="original">Original</button>
+            <button class="tab-btn" data-tab="translated">Translated</button>
+        </div>
+        
+        <div class="tab-content">
+            <div id="original" class="tab-pane active">
+                <div class="transcript-actions">
+                    <button id="copyOriginal" class="btn icon-btn">
+                        <i class="fas fa-copy"></i> Copy
+                    </button>
+                    <button id="downloadOriginal" class="btn icon-btn">
+                        <i class="fas fa-download"></i> Download
+                    </button>
+                    <button id="downloadOriginalSrt" class="btn icon-btn">
+                        <i class="fas fa-closed-captioning"></i> Download SRT
+                    </button>
+                </div>
+                <div id="originalTranscript" class="transcript-text"></div>
+            </div>
+            
+            <div id="translated" class="tab-pane">
+                <div class="transcript-actions">
+                    <button id="copyTranslated" class="btn icon-btn">
+                        <i class="fas fa-copy"></i> Copy
+                    </button>
+                    <button id="downloadTranslated" class="btn icon-btn">
+                        <i class="fas fa-download"></i> Download
+                    </button>
+                    <button id="downloadTranslatedSrt" class="btn icon-btn">
+                        <i class="fas fa-closed-captioning"></i> Download SRT
+                    </button>
+                </div>
+                <div id="translatedTranscript" class="transcript-text"></div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="back-link">
+        <a href="{{ url_for('index') }}" class="btn secondary-btn">
+            <i class="fas fa-arrow-left"></i> Back to Home
+        </a>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const transcriptionForm = document.getElementById('transcriptionForm');
+        const progressContainer = document.querySelector('.progress-container');
+        const progressFill = document.querySelector('.progress-fill');
+        const progressText = document.querySelector('.progress-text');
+        const resultsContainer = document.querySelector('.results-container');
+        const originalTranscript = document.getElementById('originalTranscript');
+        const translatedTranscript = document.getElementById('translatedTranscript');
+        const tabButtons = document.querySelectorAll('.tab-btn');
+        const tabPanes = document.querySelectorAll('.tab-pane');
+        
+        // Target language visibility control
+        const translateCheckbox = document.getElementById('translate');
+        const targetLanguageGroup = document.getElementById('targetLanguageGroup');
+        const languageSelect = document.getElementById('language');
+        const targetLanguageSelect = document.getElementById('targetLanguage');
+        
+        // Show/hide target language dropdown based on translation checkbox
+        translateCheckbox.addEventListener('change', function() {
+            targetLanguageGroup.style.display = this.checked ? 'block' : 'none';
+            updateTargetLanguage();
+        });
+        
+        // Update target language options based on source language
+        languageSelect.addEventListener('change', updateTargetLanguage);
+        
+        function updateTargetLanguage() {
+            const sourceLanguage = languageSelect.value;
+            
+            // Default target language based on source language
+            if (sourceLanguage === 'en' || sourceLanguage === 'en-US') {
+                // If source is English, default target to Urdu
+                targetLanguageSelect.value = 'ur';
+            } else {
+                // For other languages, default target to English
+                targetLanguageSelect.value = 'en';
+            }
+        }
+        
+        // Initialize target language on page load
+        updateTargetLanguage();
+        
+        // Tab switching
+        tabButtons.forEach(button => {
+            button.addEventListener('click', function() {
+                const tabId = this.getAttribute('data-tab');
+                
+                // Update active tab button
+                tabButtons.forEach(btn => btn.classList.remove('active'));
+                this.classList.add('active');
+                
+                // Update active tab pane
+                tabPanes.forEach(pane => pane.classList.remove('active'));
+                document.getElementById(tabId).classList.add('active');
+            });
+        });
+        
+        // Copy buttons
+        document.getElementById('copyOriginal').addEventListener('click', function() {
+            copyToClipboard(originalTranscript.textContent);
+            showToast('Original transcript copied to clipboard');
+        });
+        
+        document.getElementById('copyTranslated').addEventListener('click', function() {
+            copyToClipboard(translatedTranscript.textContent);
+            showToast('Translated transcript copied to clipboard');
+        });
+        
+        // Download buttons
+        document.getElementById('downloadOriginal').addEventListener('click', function() {
+            downloadText(originalTranscript.textContent, 'original_transcript.txt');
+        });
+        
+        document.getElementById('downloadTranslated').addEventListener('click', function() {
+            downloadText(translatedTranscript.textContent, 'translated_transcript.txt');
+        });
+        
+        // SRT download buttons
+        document.getElementById('downloadOriginalSrt').addEventListener('click', function() {
+            downloadSrtFile('original');
+        });
+        
+        document.getElementById('downloadTranslatedSrt').addEventListener('click', function() {
+            downloadSrtFile('translated');
+        });
+        
+        // Form submission
+        transcriptionForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(transcriptionForm);
+            const language = formData.get('language');
+            const translate = formData.get('translate') === 'true';
+            
+            // Show progress
+            transcriptionForm.style.display = 'none';
+            progressContainer.style.display = 'block';
+            resultsContainer.style.display = 'none';
+            
+            // Set initial progress
+            updateProgress(0, 'Starting transcription...');
+            
+            // Start polling for progress updates
+            let progressInterval = setInterval(checkProgress, 1000); // Check every second
+            
+            // Function to check progress
+            function checkProgress() {
+                fetch('{{ url_for("transcription_progress") }}')
+                    .then(response => response.json())
+                    .then(data => {
+                        updateProgress(data.progress, data.message);
+                    })
+                    .catch(error => {
+                        console.error('Error fetching progress:', error);
+                    });
+            }
+            
+            // Send request
+            fetch('{{ url_for("process_transcription") }}', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Stop polling for progress
+                clearInterval(progressInterval);
+                
+                if (data.status === 'success') {
+                    // Update progress to complete
+                    updateProgress(1, 'Transcription complete!');
+                    
+                    // Show results
+                    setTimeout(() => {
+                        progressContainer.style.display = 'none';
+                        resultsContainer.style.display = 'block';
+                        
+                        // Set transcript text
+                        originalTranscript.textContent = data.original_transcript;
+                        translatedTranscript.textContent = data.translated_transcript;
+                        
+                        // Show/hide SRT download buttons based on whether timestamps are available
+                        const srtButtons = document.querySelectorAll('[id$="Srt"]');
+                        if (data.has_word_timestamps) {
+                            srtButtons.forEach(btn => btn.style.display = 'inline-block');
+                        } else {
+                            srtButtons.forEach(btn => btn.style.display = 'none');
+                        }
+                        
+                        // If original and translated are the same, hide the translated tab
+                        if (data.original_transcript === data.translated_transcript) {
+                            document.querySelector('[data-tab="translated"]').style.display = 'none';
+                            document.getElementById('translated').classList.remove('active');
+                            document.querySelector('[data-tab="original"]').classList.add('active');
+                            document.getElementById('original').classList.add('active');
+                        } else {
+                            document.querySelector('[data-tab="translated"]').style.display = 'block';
+                        }
+                    }, 500);
+                } else {
+                    // Show error
+                    updateProgress(0, 'Error: ' + data.message);
+                    setTimeout(() => {
+                        progressContainer.style.display = 'none';
+                        transcriptionForm.style.display = 'block';
+                    }, 2000);
+                }
+            })
+            .catch(error => {
+                // Stop polling for progress
+                clearInterval(progressInterval);
+                
+                console.error('Error:', error);
+                updateProgress(0, 'Error processing request');
+                setTimeout(() => {
+                    progressContainer.style.display = 'none';
+                    transcriptionForm.style.display = 'block';
+                }, 2000);
+            });
+        });
+        
+        // Helper functions
+        function updateProgress(progress, message) {
+            progressFill.style.width = (progress * 100) + '%';
+            const percentageValue = Math.round(progress * 100);
+            document.querySelector('.progress-percentage').textContent = percentageValue + '%';
+            progressText.textContent = message;
+        }
+        
+        function copyToClipboard(text) {
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textarea);
+        }
+        
+        function downloadText(text, filename) {
+            const blob = new Blob([text], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+        
+        function downloadSrtFile(transcriptType) {
+            // Create form data for the request
+            const formData = new FormData();
+            formData.append('transcript_type', transcriptType);
+            
+            // Call the server to generate the SRT content
+            fetch('{{ url_for("download_srt") }}', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    // Download the SRT file
+                    const blob = new Blob([data.srt_content], { type: 'text/srt' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = data.filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                    
+                    showToast(`SRT file created successfully`);
+                } else {
+                    showToast(`Error: ${data.message}`);
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                showToast('Error generating SRT file');
+            });
+        }
+        
+        function showToast(message) {
+            const toast = document.createElement('div');
+            toast.className = 'toast';
+            toast.textContent = message;
+            document.body.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.classList.add('show');
+            }, 10);
+            
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => {
+                    document.body.removeChild(toast);
+                }, 300);
+            }, 3000);
+        }
+    });
+</script>
+{% endblock %} 
